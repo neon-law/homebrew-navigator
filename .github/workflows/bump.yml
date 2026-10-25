@@ -3,7 +3,7 @@ name: bump
 # Point the formula at a new Navigator release.
 #
 # TWO TRIGGERS, ONE PATH. `repository_dispatch` is the automatic one:
-# `neon-law-source-code/navigator`'s `deploy.yml` fires it after the CLI
+# `neon-law/navigator`'s `deploy.yml` fires it after the CLI
 # archives are attached to the GitHub Release, so a `brew upgrade` reaches the
 # new version minutes after the tag lands with nobody in the loop.
 # `workflow_dispatch` is the repair handle — re-run any tag by hand when a bump
