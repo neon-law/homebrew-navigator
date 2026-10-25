@@ -1,32 +1,24 @@
 #!/usr/bin/env bash
 #
-# Point `Formula/navigator.rb` at a `YY.M.D` release published to THIS
-# repository, `neon-law-source-code/homebrew-navigator`.
+# Point `Formula/navigator.rb` at a `YY.M.D` release published to the public
+# Navigator repository, `neon-law/navigator`.
 #
 #   scripts/bump.sh 26.8.17
 #   scripts/bump.sh 26.8.20-hotfix.4
 #   scripts/bump.sh 26.9.4-rc.1
 #
-# ENG-931: `neon-law-source-code/navigator`'s `deploy.yml` now mirrors the same
-# tag-exact archives it attaches to its own Release onto THIS repository's
-# Release as well, before it dispatches the bump this script performs — so by
-# the time this runs, the bytes it digests are already sitting here. This
-# repository is the release host now because the source repository will not
-# stay public; publishing archives to a place readers can always reach
-# anonymously is the whole point of ENG-931's "make public distribution
-# independent first" step.
+# `neon-law/navigator` is public and its own Release carries the archives, so
+# this script digests and the formula downloads straight from there. Nothing is
+# mirrored onto this tap any more: `deploy.yml` attaches the archives to its own
+# Release and then dispatches the tag here.
 #
 # Three values move: the version and the sha256 of each of the two prebuilt
 # archives this tap installs (the macOS archive and the Linux archive). A
 # fourth may move — `version_scheme` — for the reason below.
 #
-# THERE IS NO THIRD ARTIFACT ANY MORE. Intel macOS and arm64 Linux used to
-# compile `neon-law-source-code/navigator`'s source tarball, and that fallback
-# is gone rather than moved here: mirroring the whole private monorepo so two
-# platforms with no prebuilt archive keep compiling is exactly what ENG-931
-# forbids ("never mirror the whole private monorepo"). `Formula/navigator.rb`
-# now `odie`s on those two platforms instead, and this script computes no
-# digest for either.
+# THERE IS NO THIRD ARTIFACT. Intel macOS and arm64 Linux have no prebuilt
+# archive, and `Formula/navigator.rb` `odie`s on those two platforms rather than
+# compiling from source; this script computes no digest for either.
 #
 # EVERY SHAPE NAVIGATOR PUBLISHES IS ACCEPTED: an ordinary `YY.M.D`, a same-day
 # `YY.M.D-hotfix.N`, and a `YY.M.D-rc.N` release candidate. Navigator publishes
@@ -72,7 +64,7 @@
 # formula with a stale digest.
 set -euo pipefail
 
-readonly REPO="neon-law-source-code/homebrew-navigator"
+readonly REPO="neon-law/navigator"
 FORMULA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Formula/navigator.rb"
 readonly FORMULA
 
@@ -253,8 +245,8 @@ fi
 
 urls="$(grep -c '^[[:space:]]*url "' "${workdir}/navigator.rb")"
 digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/navigator.rb")"
-# ENG-931: two now, not four — the source-tarball fallback for Intel macOS and
-# arm64 Linux is gone (see the header comment), so there is one url/sha256 pair
+# Two, not four — there is no source-tarball fallback for Intel macOS and
+# arm64 Linux (see the header comment), so there is one url/sha256 pair
 # per prebuilt archive and no third artifact to digest twice.
 [[ "${urls}" -eq 2 ]] || fail "expected 2 \`url\` lines, found ${urls}"
 [[ "${digests}" -eq 2 ]] || fail "expected 2 \`sha256\` lines, found ${digests}"

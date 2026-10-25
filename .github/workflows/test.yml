@@ -10,10 +10,7 @@ name: test
 #   reader takes and it is cheap enough to gate on.
 #
 #   UNSUPPORTED (Intel macOS, arm64 Linux) — no prebuilt archive, and, since
-#   ENG-931, no source-tarball fallback either: that fallback used to compile
-#   `neon-law-source-code/navigator`'s own tarball, and mirroring the whole
-#   private monorepo here just to keep two platforms with no prebuilt archive
-#   compiling is exactly what ENG-931 forbids. `Formula/navigator.rb` `odie`s
+#   no source-tarball fallback either. `Formula/navigator.rb` `odie`s
 #   on these two instead, and the `unsupported` job below proves that refusal
 #   stays a formula error rather than a Ruby crash — weekly and on demand, the
 #   same cadence the old source-build lane ran on, because the thing worth

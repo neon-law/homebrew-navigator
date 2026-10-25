@@ -23,30 +23,12 @@
 # outgoing version — so the substitution ate the example and left a sentence
 # that no longer explained anything.
 #
-# ONE ACQUISITION PATH NOW: arm64 macOS and x86_64 Linux download the archive
-# `deploy.yml` attaches to its Release, mirrored here (ENG-931 below). Intel
-# macOS and arm64 Linux have no prebuilt archive and this formula no longer
-# compiles a fallback for them — see ENG-931 in both `on_intel` blocks below for
-# why.
-#
-# ENG-931: NAVIGATOR'S SOURCE REPOSITORY STOPPED BEING THE RELEASE HOST. Every
-# `url` line here used to name `neon-law-source-code/navigator` — the source
-# tree — because that repository's own Release carried the archives. It will
-# not stay public, so `deploy.yml` now mirrors the same tag-exact archives onto
-# THIS repository's own Release as well, and every `url` line below names this
-# repository instead. `scripts/bump.sh` computes every digest from those bytes,
-# same as it always did — only the host moved.
-#
-# The source-tarball fallback for Intel macOS and arm64 Linux is gone rather
-# than moved, because it compiled `neon-law-source-code/navigator`'s ENTIRE
-# workspace tarball — the whole private monorepo once that repository stops
-# being public, not something this tap may mirror (ENG-931's boundary: never
-# mirror the whole private monorepo, only the allowlisted LSP/rules source).
-# Compiling a fallback from a mirrored tarball of just `cli/` was considered and
-# rejected: the CLI's `Cargo.toml` names path dependencies elsewhere in the
-# workspace, so a partial mirror would not build either, and maintaining a
-# second, narrower source export for two platforms with no prebuilt archive
-# cost more than documenting the reduced matrix these two `odie` calls state.
+# ONE ACQUISITION PATH: arm64 macOS and x86_64 Linux download the archive
+# `deploy.yml` attaches to the Release of the public `neon-law/navigator`
+# repository; every `url` line below names it, and `scripts/bump.sh` computes
+# every digest from those same bytes. Intel macOS and arm64 Linux have no
+# prebuilt archive and this formula does not compile a fallback for them — see
+# the `odie` in both `on_intel` blocks below.
 #
 # Homebrew is also what makes the macOS binary usable at all, independent of
 # any of the above. It is unsigned and unnotarized, and Gatekeeper blocks a
@@ -55,29 +37,23 @@
 # still worth doing — this is a workaround for its absence, not a replacement.
 class Navigator < Formula
   desc "Neon Law Navigator CLI — legal workflow, notation, and deployment tooling"
-  # ENG-931: the product page, not the source repository — `brew audit
-  # --online` fetches this and needs it to keep resolving once the source
-  # repository is private. `webapp::source_repository::NAVIGATOR_HREF` is the
-  # same URL the public footer links.
+  # The product page; `webapp::source_repository::NAVIGATOR_HREF` is the same
+  # URL the public footer links.
   homepage "https://www.neonlaw.com/navigator"
-  version "26.10.24-rc.1"
+  version "26.10.24"
   # The installed CLI offers either license; the tap has its own terms.
   license any_of: ["MIT", "Apache-2.0"]
   version_scheme 1
 
   on_macos do
     on_arm do
-      url "https://github.com/neon-law-source-code/homebrew-navigator/releases/download/26.10.24-rc.1/navigator-26.10.24-rc.1-macos.tar.gz"
-      sha256 "05ee43451ebc7f8df4a9c667ded0cc725eba966c1be3efcaacea0fcfaf5d800c"
+      url "https://github.com/neon-law/navigator/releases/download/26.10.24/navigator-26.10.24-macos.tar.gz"
+      sha256 "8d5fecd4be181e19fe44e34d992bf4dc2be262e07dda8392f73d9649f4c46580"
     end
 
     on_intel do
-      # ENG-931: no prebuilt archive exists for Intel macOS — `macos-latest` is
-      # Apple silicon — and this formula no longer falls back to compiling the
-      # source tag. That tag used to be `neon-law-source-code/navigator`'s own
-      # tarball; once that repository stops being public the tarball is gone,
-      # and mirroring the whole private monorepo here to keep it working is
-      # exactly what ENG-931 forbids. See the header comment above.
+      # No prebuilt archive exists for Intel macOS — `macos-latest` is Apple
+      # silicon — and this formula does not compile from source.
       odie "no prebuilt navigator archive exists for Intel macOS, and this " \
            "formula no longer compiles one from source. Install on Apple " \
            "silicon or x86_64 Linux instead, or use the Linux install script " \
@@ -88,8 +64,8 @@ class Navigator < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/neon-law-source-code/homebrew-navigator/releases/download/26.10.24-rc.1/navigator-26.10.24-rc.1-linux.tar.gz"
-      sha256 "11a0ace35991ed0295ee6152b70e68e6da55f0a700aadccc14da027d2b63d75b"
+      url "https://github.com/neon-law/navigator/releases/download/26.10.24/navigator-26.10.24-linux.tar.gz"
+      sha256 "55b3422d03f806087a7ee31402d16db7c489d372d3d6961a5cb5af00b06175c7"
     end
 
     on_arm do
