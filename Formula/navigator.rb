@@ -40,15 +40,15 @@ class Navigator < Formula
   # The product page; `webapp::source_repository::NAVIGATOR_HREF` is the same
   # URL the public footer links.
   homepage "https://www.neonlaw.com/navigator"
-  version "26.10.26"
+  version "26.10.27-rc.1"
   # The installed CLI offers either license; the tap has its own terms.
   license any_of: ["MIT", "Apache-2.0"]
   version_scheme 1
 
   on_macos do
     on_arm do
-      url "https://github.com/neon-law/navigator/releases/download/26.10.26/navigator-26.10.26-macos.tar.gz"
-      sha256 "3fafa425122afd762bda8f8fe973ab94fc049ab950ca8ad97832c16ae337f38e"
+      url "https://github.com/neon-law/navigator/releases/download/26.10.27-rc.1/navigator-26.10.27-rc.1-macos.tar.gz"
+      sha256 "e7ea0362305cd381b8f60e2ed5d98e43d1acd1e6268303db4a6b684acc40e96e"
     end
 
     on_intel do
@@ -64,8 +64,8 @@ class Navigator < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/neon-law/navigator/releases/download/26.10.26/navigator-26.10.26-linux.tar.gz"
-      sha256 "14a3fa2e3f946e1467cb40981303d725ea04e4dc8c336a6cda22b1bc7a3a92dd"
+      url "https://github.com/neon-law/navigator/releases/download/26.10.27-rc.1/navigator-26.10.27-rc.1-linux.tar.gz"
+      sha256 "9bba3ae88adaec583f8af8cf8c2356ecb587dd81949f0a1c889fb93bc33c1036"
     end
 
     on_arm do
