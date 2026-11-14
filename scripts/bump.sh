@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 #
-# Point `Formula/navigator.rb` at a `YY.M.D` release published to the public
-# Navigator repository, `neon-law/navigator`.
+# Point one formula at a `YY.M.D` release published to the public Navigator
+# repository, `neon-law/navigator`. The formula name is the binary's name and
+# its archives' prefix, and defaults to `navigator`:
 #
 #   scripts/bump.sh 26.8.17
 #   scripts/bump.sh 26.8.20-hotfix.4
-#   scripts/bump.sh 26.9.4-rc.1
+#   scripts/bump.sh 26.9.4-rc.1 scorpio
+#
+# `bump.yml` runs this once per file in `Formula/`, so a binary joins the tap by
+# adding its formula once a release carries its two archives.
 #
 # `neon-law/navigator` is public and its own Release carries the archives, so
 # this script digests and the formula downloads straight from there. Nothing is
@@ -65,14 +69,22 @@
 set -euo pipefail
 
 readonly REPO="neon-law/navigator"
-FORMULA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Formula/navigator.rb"
-readonly FORMULA
-
-if [[ "$#" -ne 1 ]]; then
-    echo "usage: scripts/bump.sh <YY.M.D>" >&2
+if [[ "$#" -lt 1 || "$#" -gt 2 ]]; then
+    echo "usage: scripts/bump.sh <YY.M.D> [formula]" >&2
     exit 2
 fi
 readonly TAG="$1"
+readonly NAME="${2:-navigator}"
+if ! printf '%s' "${NAME}" | grep -Eq '^[a-z][a-z0-9-]*$'; then
+    echo "bump: '${NAME}' is not a formula name" >&2
+    exit 2
+fi
+FORMULA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Formula/${NAME}.rb"
+readonly FORMULA
+if [[ ! -f "${FORMULA}" ]]; then
+    echo "bump: ${FORMULA} does not exist" >&2
+    exit 2
+fi
 
 # The same shape `deploy.yml`'s `release-version` job validates, character for
 # character: two-digit year, unpadded month and day, and an OPTIONAL unpadded
@@ -99,12 +111,12 @@ digest() {
     shasum -a 256 "${workdir}/${name}" | cut -d' ' -f1
 }
 
-echo "==> digesting ${REPO} ${TAG}"
+echo "==> digesting ${REPO} ${TAG} for ${NAME}"
 sha_macos="$(digest \
-    "https://github.com/${REPO}/releases/download/${TAG}/navigator-${TAG}-macos.tar.gz" \
+    "https://github.com/${REPO}/releases/download/${TAG}/${NAME}-${TAG}-macos.tar.gz" \
     macos.tar.gz)"
 sha_linux="$(digest \
-    "https://github.com/${REPO}/releases/download/${TAG}/navigator-${TAG}-linux.tar.gz" \
+    "https://github.com/${REPO}/releases/download/${TAG}/${NAME}-${TAG}-linux.tar.gz" \
     linux.tar.gz)"
 echo "    macos  ${sha_macos}"
 echo "    linux  ${sha_linux}"
@@ -197,7 +209,7 @@ awk \
         print; pending = ""; next
     }
     { print }
-' "${workdir}/versioned.rb" > "${workdir}/navigator.rb"
+' "${workdir}/versioned.rb" > "${workdir}/patched.rb"
 
 # ---- assertions -----------------------------------------------------------
 # The patch is regex over a hand-maintained file. Everything below exists
@@ -219,32 +231,32 @@ fail() { echo "bump: $1" >&2; exit 1; }
 # is any `26.8.20` left that is not part of a `26.8.20-hotfix.4`?
 escaped_tag="$(printf '%s' "${TAG}" | sed 's/\./\\./g')"
 if [[ "${old}" != "${TAG}" ]] &&
-    grep -E '^[[:space:]]*(version|url) "' "${workdir}/navigator.rb" |
+    grep -E '^[[:space:]]*(version|url) "' "${workdir}/patched.rb" |
         sed "s/${escaped_tag}//g" | grep -q "${escaped}"; then
     fail "the previous version ${old} still appears on a version or url line after the patch"
 fi
 
-grep -q "^[[:space:]]*version \"${TAG}\"$" "${workdir}/navigator.rb" ||
+grep -q "^[[:space:]]*version \"${TAG}\"$" "${workdir}/patched.rb" ||
     fail "the \`version\` line was not updated to ${TAG}"
 
 # `version_scheme` is what keeps `brew upgrade` moving across a tag that sorts
 # backwards, so a patch that dropped it, duplicated it, or walked it BACKWARDS
 # would strand every installed keg — silently, and only on a reader's machine.
-schemes="$(grep -c '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/navigator.rb" || true)"
+schemes="$(grep -c '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/patched.rb" || true)"
 if [[ "${scheme}" -eq 0 ]]; then
     [[ "${schemes}" -eq 0 ]] ||
         fail "scheme 0 is Homebrew's default and must stay unwritten, found ${schemes} \`version_scheme\` line(s)"
 else
     [[ "${schemes}" -eq 1 ]] ||
         fail "expected exactly 1 \`version_scheme\` line, found ${schemes}"
-    grep -q "^[[:space:]]*version_scheme ${scheme}$" "${workdir}/navigator.rb" ||
+    grep -q "^[[:space:]]*version_scheme ${scheme}$" "${workdir}/patched.rb" ||
         fail "the \`version_scheme\` line was not written as ${scheme}"
 fi
 [[ "${scheme}" -ge "${old_scheme}" ]] ||
     fail "version_scheme went backwards, ${old_scheme} -> ${scheme} — a lower scheme is OLDER than every installed keg"
 
-urls="$(grep -c '^[[:space:]]*url "' "${workdir}/navigator.rb")"
-digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/navigator.rb")"
+urls="$(grep -c '^[[:space:]]*url "' "${workdir}/patched.rb")"
+digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/patched.rb")"
 # Two, not four — there is no source-tarball fallback for Intel macOS and
 # arm64 Linux (see the header comment), so there is one url/sha256 pair
 # per prebuilt archive and no third artifact to digest twice.
@@ -265,18 +277,18 @@ while read -r line; do
     # once.
     printf '%s' "${line}" | grep -q "github\.com/${REPO}/" ||
         fail "a url line does not name ${REPO}: ${line}"
-done < <(grep '^[[:space:]]*url "' "${workdir}/navigator.rb")
+done < <(grep '^[[:space:]]*url "' "${workdir}/patched.rb")
 
 # The placeholder the formula ships with before its first bump, and the shape
 # any unpatched digest would keep.
-if grep -q 'sha256 "0\{64\}"' "${workdir}/navigator.rb"; then
+if grep -q 'sha256 "0\{64\}"' "${workdir}/patched.rb"; then
     fail "a sha256 is still the all-zero placeholder — one url did not match a known artifact"
 fi
 
 for expected in "${sha_macos}" "${sha_linux}"; do
-    grep -q "sha256 \"${expected}\"" "${workdir}/navigator.rb" ||
+    grep -q "sha256 \"${expected}\"" "${workdir}/patched.rb" ||
         fail "the computed digest ${expected} did not reach the formula"
 done
 
-cp "${workdir}/navigator.rb" "${FORMULA}"
+cp "${workdir}/patched.rb" "${FORMULA}"
 echo "==> ${FORMULA} now points at ${TAG}"
