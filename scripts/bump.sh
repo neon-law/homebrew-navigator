@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Point `Formula/navigator.rb` at a `YY.M.D` release published to the public
+# Point both Homebrew formulas at a `YY.M.D` release published to the public
 # Navigator repository, `neon-law/navigator`.
 #
 #   scripts/bump.sh 26.8.17
@@ -65,8 +65,7 @@
 set -euo pipefail
 
 readonly REPO="neon-law/navigator"
-FORMULA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Formula/navigator.rb"
-readonly FORMULA
+readonly FORMULA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Formula"
 
 if [[ "$#" -ne 1 ]]; then
     echo "usage: scripts/bump.sh <YY.M.D>" >&2
@@ -99,184 +98,205 @@ digest() {
     shasum -a 256 "${workdir}/${name}" | cut -d' ' -f1
 }
 
-echo "==> digesting ${REPO} ${TAG}"
-sha_macos="$(digest \
-    "https://github.com/${REPO}/releases/download/${TAG}/navigator-${TAG}-macos.tar.gz" \
-    macos.tar.gz)"
-sha_linux="$(digest \
-    "https://github.com/${REPO}/releases/download/${TAG}/navigator-${TAG}-linux.tar.gz" \
-    linux.tar.gz)"
-echo "    macos  ${sha_macos}"
-echo "    linux  ${sha_linux}"
-
-# The version currently in the formula, read from the file rather than passed
-# in, so a re-run against an already-bumped formula is a no-op instead of a
-# corruption.
-old="$(sed -n 's/^[[:space:]]*version "\(.*\)"$/\1/p' "${FORMULA}")"
-if [[ -z "${old}" ]]; then
-    echo "bump: ${FORMULA} has no \`version \"...\"\` line — the formula shape moved" >&2
-    exit 1
-fi
-
-# The scheme currently in the formula. Absent means 0, which is Homebrew's own
-# default for a formula that never declared one.
-old_scheme="$(sed -n 's/^[[:space:]]*version_scheme \([0-9]\{1,\}\)$/\1/p' "${FORMULA}")"
-: "${old_scheme:=0}"
-
-# Does the new tag sort above the outgoing one BY HOMEBREW'S RULES? Not by
-# semver's, and not by this script's idea of either — `brew` is the program that
-# will decide whether a reader's `brew upgrade` moves, so `brew` is asked.
-# Re-implementing its comparator here is how the two would silently diverge.
-#
-# A re-run against an already-bumped formula is a no-op, so an unchanged version
-# leaves the scheme alone; incrementing it there would republish the same bytes
-# as an upgrade on every re-run.
-scheme="${old_scheme}"
-if [[ "${old}" != "${TAG}" ]]; then
-    if brew ruby -e 'require "version"; exit((Version.new(ARGV[0]) <=> Version.new(ARGV[1])).to_i > 0 ? 0 : 1)' \
-        "${TAG}" "${old}"; then
-        echo "==> ${TAG} sorts above ${old} for brew; version_scheme stays ${scheme}"
-    else
-        scheme="$((old_scheme + 1))"
-        echo "==> ${TAG} does NOT sort above ${old} for brew (a hotfix outranks its own base version there)"
-        echo "    version_scheme ${old_scheme} -> ${scheme}, so \`brew upgrade\` still moves"
+# Prepare and verify both formulas before replacing either one.
+bump_formula() {
+    local name="$1"
+    local formula="${FORMULA_DIR}/${name}.rb"
+    local sha_macos sha_linux old old_scheme scheme escaped escaped_tag schemes urls digests
+    local platform archive line expected
+    echo "==> digesting ${REPO} ${name} ${TAG}"
+    sha_macos="$(digest \
+        "https://github.com/${REPO}/releases/download/${TAG}/${name}-${TAG}-macos.tar.gz" \
+        macos.tar.gz)"
+    sha_linux="$(digest \
+        "https://github.com/${REPO}/releases/download/${TAG}/${name}-${TAG}-linux.tar.gz" \
+        linux.tar.gz)"
+    if [[ "${name}" == hudson ]]; then
+        for platform in macos linux; do
+            archive="hudson-${TAG}-${platform}.tar.gz"
+            curl --fail --silent --show-error --location \
+                --output "${workdir}/${archive}.sha256" \
+                "https://github.com/${REPO}/releases/download/${TAG}/${archive}.sha256"
+            mv "${workdir}/${platform}.tar.gz" "${workdir}/${archive}"
+            (cd "${workdir}" && shasum -a 256 -c "${archive}.sha256")
+        done
     fi
-fi
+    echo "    macos  ${sha_macos}"
+    echo "    linux  ${sha_linux}"
 
-# Every occurrence of the old version ON THE LINES THAT CARRY ONE: the `version`
-# line and both halves of each release-asset URL. Dots are escaped so `26.8.17`
-# cannot also match `26X8X17`.
-#
-# THE ADDRESSES ARE LOAD-BEARING, and a file-wide `s///g` is what taught that.
-# The formula's header comment explains `version_scheme` by naming the pair that
-# needs it — a hotfix and its own base version — and an unaddressed substitution
-# rewrote that prose on every bump, because the example WAS the formula's
-# outgoing version once. Several bumps later the comment claimed Homebrew ranks
-# `26.9.2` above `26.8.20`: still true, and no longer an explanation of
-# anything. Nothing failed; the file just stopped saying what it meant.
-#
-# Two `-e` addresses rather than one alternation: BSD `sed` has no `\|` in a
-# basic regular expression, and this script is run by hand on macOS as often as
-# it is run by the workflow on Linux.
-escaped="$(printf '%s' "${old}" | sed 's/\./\\./g')"
-sed \
-    -e "/^[[:space:]]*version \"/ s/${escaped}/${TAG}/g" \
-    -e "/^[[:space:]]*url \"/ s/${escaped}/${TAG}/g" \
-    "${FORMULA}" > "${workdir}/versioned.rb"
-
-# Write the scheme back. Patch the line if the formula already declares one,
-# otherwise insert it after `license` — which is where Homebrew's
-# `FormulaAudit/ComponentsOrder` cop expects it, so `brew style` stays green.
-# A scheme of 0 is Homebrew's default and stays unwritten: a formula carrying a
-# no-op `version_scheme 0` reads as though someone had a reason for it.
-if [[ "${scheme}" -ne 0 ]]; then
-    if grep -q '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/versioned.rb"; then
-        sed "s/^\([[:space:]]*\)version_scheme [0-9]\{1,\}$/\1version_scheme ${scheme}/" \
-            "${workdir}/versioned.rb" > "${workdir}/scheme.rb"
-    else
-        sed "s/^\([[:space:]]*\)license \(.*\)$/\1license \2\n\1version_scheme ${scheme}/" \
-            "${workdir}/versioned.rb" > "${workdir}/scheme.rb"
+    # The version currently in the formula, read from the file rather than passed
+    # in, so a re-run against an already-bumped formula is a no-op instead of a
+    # corruption.
+    old="$(sed -n 's/^[[:space:]]*version "\(.*\)"$/\1/p' "${formula}")"
+    if [[ -z "${old}" ]]; then
+        echo "bump: ${formula} has no \`version \"...\"\` line — the formula shape moved" >&2
+        exit 1
     fi
-    mv "${workdir}/scheme.rb" "${workdir}/versioned.rb"
-fi
 
-# Each `sha256` line takes the digest of the artifact the `url` line ABOVE it
-# names. Matching on the URL rather than on position means reordering the
-# platform blocks cannot silently pair a digest with the wrong download.
-awk \
-    -v macos="${sha_macos}" \
-    -v linux="${sha_linux}" '
-    /^[[:space:]]*url "/ {
-        if ($0 ~ /-macos\.tar\.gz"$/)      { pending = macos }
-        else if ($0 ~ /-linux\.tar\.gz"$/) { pending = linux }
-        else                               { pending = "" }
-        print; next
-    }
-    /^[[:space:]]*sha256 "/ && pending != "" {
-        sub(/"[0-9a-f]*"/, "\"" pending "\"")
-        print; pending = ""; next
-    }
-    { print }
-' "${workdir}/versioned.rb" > "${workdir}/navigator.rb"
+    # The scheme currently in the formula. Absent means 0, which is Homebrew's own
+    # default for a formula that never declared one.
+    old_scheme="$(sed -n 's/^[[:space:]]*version_scheme \([0-9]\{1,\}\)$/\1/p' "${formula}")"
+    : "${old_scheme:=0}"
 
-# ---- assertions -----------------------------------------------------------
-# The patch is regex over a hand-maintained file. Everything below exists
-# because a silent partial patch publishes a formula that resolves — a URL for
-# one release carrying the digest of another — and Homebrew reports that as a
-# checksum mismatch on the USER's machine, not here.
-fail() { echo "bump: $1" >&2; exit 1; }
+    # Does the new tag sort above the outgoing one BY HOMEBREW'S RULES? Not by
+    # semver's, and not by this script's idea of either — `brew` is the program that
+    # will decide whether a reader's `brew upgrade` moves, so `brew` is asked.
+    # Re-implementing its comparator here is how the two would silently diverge.
+    #
+    # A re-run against an already-bumped formula is a no-op, so an unchanged version
+    # leaves the scheme alone; incrementing it there would republish the same bytes
+    # as an upgrade on every re-run.
+    scheme="${old_scheme}"
+    if [[ "${old}" != "${TAG}" ]]; then
+        if brew ruby -e 'require "version"; exit((Version.new(ARGV[0]) <=> Version.new(ARGV[1])).to_i > 0 ? 0 : 1)' \
+            "${TAG}" "${old}"; then
+            echo "==> ${TAG} sorts above ${old} for brew; version_scheme stays ${scheme}"
+        else
+            scheme="$((old_scheme + 1))"
+            echo "==> ${TAG} does NOT sort above ${old} for brew (a hotfix outranks its own base version there)"
+            echo "    version_scheme ${old_scheme} -> ${scheme}, so \`brew upgrade\` still moves"
+        fi
+    fi
 
-# No leftover of the outgoing version on any line that carries one. Scoped to
-# the same `version` and `url` lines the substitution addressed: prose elsewhere
-# in the file is allowed to name an old release, and after the fix above it
-# keeps doing so on purpose.
-#
-# Checked against a copy with every occurrence of the NEW tag stripped out,
-# because an ordinary version is a prefix of both its own hotfix and its own
-# release candidate: bumping `26.8.20` to `26.8.20-hotfix.4` writes a correct
-# formula in which a bare `grep 26.8.20` matches on every patched line.
-# Stripping the new tag first makes the question the one actually worth asking —
-# is any `26.8.20` left that is not part of a `26.8.20-hotfix.4`?
-escaped_tag="$(printf '%s' "${TAG}" | sed 's/\./\\./g')"
-if [[ "${old}" != "${TAG}" ]] &&
-    grep -E '^[[:space:]]*(version|url) "' "${workdir}/navigator.rb" |
-        sed "s/${escaped_tag}//g" | grep -q "${escaped}"; then
-    fail "the previous version ${old} still appears on a version or url line after the patch"
-fi
+    # Every occurrence of the old version ON THE LINES THAT CARRY ONE: the `version`
+    # line and both halves of each release-asset URL. Dots are escaped so `26.8.17`
+    # cannot also match `26X8X17`.
+    #
+    # THE ADDRESSES ARE LOAD-BEARING, and a file-wide `s///g` is what taught that.
+    # The formula's header comment explains `version_scheme` by naming the pair that
+    # needs it — a hotfix and its own base version — and an unaddressed substitution
+    # rewrote that prose on every bump, because the example WAS the formula's
+    # outgoing version once. Several bumps later the comment claimed Homebrew ranks
+    # `26.9.2` above `26.8.20`: still true, and no longer an explanation of
+    # anything. Nothing failed; the file just stopped saying what it meant.
+    #
+    # Two `-e` addresses rather than one alternation: BSD `sed` has no `\|` in a
+    # basic regular expression, and this script is run by hand on macOS as often as
+    # it is run by the workflow on Linux.
+    escaped="$(printf '%s' "${old}" | sed 's/\./\\./g')"
+    sed \
+        -e "/^[[:space:]]*version \"/ s/${escaped}/${TAG}/g" \
+        -e "/^[[:space:]]*url \"/ s/${escaped}/${TAG}/g" \
+        "${formula}" > "${workdir}/versioned.rb"
 
-grep -q "^[[:space:]]*version \"${TAG}\"$" "${workdir}/navigator.rb" ||
-    fail "the \`version\` line was not updated to ${TAG}"
+    # Write the scheme back. Patch the line if the formula already declares one,
+    # otherwise insert it after `license` — which is where Homebrew's
+    # `FormulaAudit/ComponentsOrder` cop expects it, so `brew style` stays green.
+    # A scheme of 0 is Homebrew's default and stays unwritten: a formula carrying a
+    # no-op `version_scheme 0` reads as though someone had a reason for it.
+    if [[ "${scheme}" -ne 0 ]]; then
+        if grep -q '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/versioned.rb"; then
+            sed "s/^\([[:space:]]*\)version_scheme [0-9]\{1,\}$/\1version_scheme ${scheme}/" \
+                "${workdir}/versioned.rb" > "${workdir}/scheme.rb"
+        else
+            sed "s/^\([[:space:]]*\)license \(.*\)$/\1license \2\n\1version_scheme ${scheme}/" \
+                "${workdir}/versioned.rb" > "${workdir}/scheme.rb"
+        fi
+        mv "${workdir}/scheme.rb" "${workdir}/versioned.rb"
+    fi
 
-# `version_scheme` is what keeps `brew upgrade` moving across a tag that sorts
-# backwards, so a patch that dropped it, duplicated it, or walked it BACKWARDS
-# would strand every installed keg — silently, and only on a reader's machine.
-schemes="$(grep -c '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/navigator.rb" || true)"
-if [[ "${scheme}" -eq 0 ]]; then
-    [[ "${schemes}" -eq 0 ]] ||
-        fail "scheme 0 is Homebrew's default and must stay unwritten, found ${schemes} \`version_scheme\` line(s)"
-else
-    [[ "${schemes}" -eq 1 ]] ||
-        fail "expected exactly 1 \`version_scheme\` line, found ${schemes}"
-    grep -q "^[[:space:]]*version_scheme ${scheme}$" "${workdir}/navigator.rb" ||
-        fail "the \`version_scheme\` line was not written as ${scheme}"
-fi
-[[ "${scheme}" -ge "${old_scheme}" ]] ||
-    fail "version_scheme went backwards, ${old_scheme} -> ${scheme} — a lower scheme is OLDER than every installed keg"
+    # Each `sha256` line takes the digest of the artifact the `url` line ABOVE it
+    # names. Matching on the URL rather than on position means reordering the
+    # platform blocks cannot silently pair a digest with the wrong download.
+    awk \
+        -v macos="${sha_macos}" \
+        -v linux="${sha_linux}" '
+        /^[[:space:]]*url "/ {
+            if ($0 ~ /-macos\.tar\.gz"$/)      { pending = macos }
+            else if ($0 ~ /-linux\.tar\.gz"$/) { pending = linux }
+            else                               { pending = "" }
+            print; next
+        }
+        /^[[:space:]]*sha256 "/ && pending != "" {
+            sub(/"[0-9a-f]*"/, "\"" pending "\"")
+            print; pending = ""; next
+        }
+        { print }
+    ' "${workdir}/versioned.rb" > "${workdir}/${name}.rb"
 
-urls="$(grep -c '^[[:space:]]*url "' "${workdir}/navigator.rb")"
-digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/navigator.rb")"
-# Two, not four — there is no source-tarball fallback for Intel macOS and
-# arm64 Linux (see the header comment), so there is one url/sha256 pair
-# per prebuilt archive and no third artifact to digest twice.
-[[ "${urls}" -eq 2 ]] || fail "expected 2 \`url\` lines, found ${urls}"
-[[ "${digests}" -eq 2 ]] || fail "expected 2 \`sha256\` lines, found ${digests}"
+    # ---- assertions -----------------------------------------------------------
+    # The patch is regex over a hand-maintained file. Everything below exists
+    # because a silent partial patch publishes a formula that resolves — a URL for
+    # one release carrying the digest of another — and Homebrew reports that as a
+    # checksum mismatch on the USER's machine, not here.
+    fail() { echo "bump: $1" >&2; exit 1; }
 
-while read -r line; do
-    printf '%s' "${line}" | grep -q "${TAG}" ||
-        fail "a url line does not name ${TAG}: ${line}"
-    # And the same repository the digests above were taken from. These are two
-    # independent literals — the downloads are composed from `REPO`, the formula
-    # carries its own URLs, and this script only ever substitutes the VERSION —
-    # so a repository that moves gets corrected in one and missed in the other.
-    # Nothing fails when that happens: GitHub answers the old path with a 301
-    # and `curl --location` follows it, so the digests still match and the
-    # formula goes on telling readers to download from an owner it left. It
-    # stays wrong until the redirect lapses, and then every install breaks at
-    # once.
-    printf '%s' "${line}" | grep -q "github\.com/${REPO}/" ||
-        fail "a url line does not name ${REPO}: ${line}"
-done < <(grep '^[[:space:]]*url "' "${workdir}/navigator.rb")
+    # No leftover of the outgoing version on any line that carries one. Scoped to
+    # the same `version` and `url` lines the substitution addressed: prose elsewhere
+    # in the file is allowed to name an old release, and after the fix above it
+    # keeps doing so on purpose.
+    #
+    # Checked against a copy with every occurrence of the NEW tag stripped out,
+    # because an ordinary version is a prefix of both its own hotfix and its own
+    # release candidate: bumping `26.8.20` to `26.8.20-hotfix.4` writes a correct
+    # formula in which a bare `grep 26.8.20` matches on every patched line.
+    # Stripping the new tag first makes the question the one actually worth asking —
+    # is any `26.8.20` left that is not part of a `26.8.20-hotfix.4`?
+    escaped_tag="$(printf '%s' "${TAG}" | sed 's/\./\\./g')"
+    if [[ "${old}" != "${TAG}" ]] &&
+        grep -E '^[[:space:]]*(version|url) "' "${workdir}/${name}.rb" |
+            sed "s/${escaped_tag}//g" | grep -q "${escaped}"; then
+        fail "the previous version ${old} still appears on a version or url line after the patch"
+    fi
 
-# The placeholder the formula ships with before its first bump, and the shape
-# any unpatched digest would keep.
-if grep -q 'sha256 "0\{64\}"' "${workdir}/navigator.rb"; then
-    fail "a sha256 is still the all-zero placeholder — one url did not match a known artifact"
-fi
+    grep -q "^[[:space:]]*version \"${TAG}\"$" "${workdir}/${name}.rb" ||
+        fail "the \`version\` line was not updated to ${TAG}"
 
-for expected in "${sha_macos}" "${sha_linux}"; do
-    grep -q "sha256 \"${expected}\"" "${workdir}/navigator.rb" ||
-        fail "the computed digest ${expected} did not reach the formula"
+    # `version_scheme` is what keeps `brew upgrade` moving across a tag that sorts
+    # backwards, so a patch that dropped it, duplicated it, or walked it BACKWARDS
+    # would strand every installed keg — silently, and only on a reader's machine.
+    schemes="$(grep -c '^[[:space:]]*version_scheme [0-9]\{1,\}$' "${workdir}/${name}.rb" || true)"
+    if [[ "${scheme}" -eq 0 ]]; then
+        [[ "${schemes}" -eq 0 ]] ||
+            fail "scheme 0 is Homebrew's default and must stay unwritten, found ${schemes} \`version_scheme\` line(s)"
+    else
+        [[ "${schemes}" -eq 1 ]] ||
+            fail "expected exactly 1 \`version_scheme\` line, found ${schemes}"
+        grep -q "^[[:space:]]*version_scheme ${scheme}$" "${workdir}/${name}.rb" ||
+            fail "the \`version_scheme\` line was not written as ${scheme}"
+    fi
+    [[ "${scheme}" -ge "${old_scheme}" ]] ||
+        fail "version_scheme went backwards, ${old_scheme} -> ${scheme} — a lower scheme is OLDER than every installed keg"
+
+    urls="$(grep -c '^[[:space:]]*url "' "${workdir}/${name}.rb")"
+    digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/${name}.rb")"
+    # Two, not four — there is no source-tarball fallback for Intel macOS and
+    # arm64 Linux (see the header comment), so there is one url/sha256 pair
+    # per prebuilt archive and no third artifact to digest twice.
+    [[ "${urls}" -eq 2 ]] || fail "expected 2 \`url\` lines, found ${urls}"
+    [[ "${digests}" -eq 2 ]] || fail "expected 2 \`sha256\` lines, found ${digests}"
+
+    while read -r line; do
+        printf '%s' "${line}" | grep -q "${TAG}" ||
+            fail "a url line does not name ${TAG}: ${line}"
+        # And the same repository the digests above were taken from. These are two
+        # independent literals — the downloads are composed from `REPO`, the formula
+        # carries its own URLs, and this script only ever substitutes the VERSION —
+        # so a repository that moves gets corrected in one and missed in the other.
+        # Nothing fails when that happens: GitHub answers the old path with a 301
+        # and `curl --location` follows it, so the digests still match and the
+        # formula goes on telling readers to download from an owner it left. It
+        # stays wrong until the redirect lapses, and then every install breaks at
+        # once.
+        printf '%s' "${line}" | grep -q "github\.com/${REPO}/" ||
+            fail "a url line does not name ${REPO}: ${line}"
+    done < <(grep '^[[:space:]]*url "' "${workdir}/${name}.rb")
+
+    # The placeholder the formula ships with before its first bump, and the shape
+    # any unpatched digest would keep.
+    if grep -q 'sha256 "0\{64\}"' "${workdir}/${name}.rb"; then
+        fail "a sha256 is still the all-zero placeholder — one url did not match a known artifact"
+    fi
+
+    for expected in "${sha_macos}" "${sha_linux}"; do
+        grep -q "sha256 \"${expected}\"" "${workdir}/${name}.rb" ||
+            fail "the computed digest ${expected} did not reach the formula"
+    done
+}
+
+bump_formula navigator
+bump_formula hudson
+for name in navigator hudson; do
+    cp "${workdir}/${name}.rb" "${FORMULA_DIR}/${name}.rb"
 done
-
-cp "${workdir}/navigator.rb" "${FORMULA}"
-echo "==> ${FORMULA} now points at ${TAG}"
+echo "==> navigator and hudson now point at ${TAG}"
