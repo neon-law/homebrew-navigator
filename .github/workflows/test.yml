@@ -143,7 +143,7 @@ jobs:
       - name: brew style
         run: |
           set -euo pipefail
-          brew style Formula/navigator.rb Formula/hudson.rb
+          brew style Formula/navigator.rb Formula/hudson.rb Formula/scorpio.rb
       # `--online` checks the homepage and that every URL resolves, so it can
       # only run once those URLs name a real release. NOT `--strict`: that
       # enforces homebrew-core submission rules, several of which a tap is
@@ -181,10 +181,13 @@ jobs:
         run: |
           brew audit --online --except=version --formula "${TAP}/navigator"
           brew audit --online --except=version --formula "${TAP}/hudson"
+          brew audit --online --except=version --formula "${TAP}/scorpio"
           navigator_version="$(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/navigator.rb)"
           hudson_version="$(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/hudson.rb)"
           test -n "${hudson_version}"
           test "${navigator_version}" = "${hudson_version}"
+          scorpio_version="$(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/scorpio.rb)"
+          test "${navigator_version}" = "${scorpio_version}"
 
       # The one thing `--except=version` gave up that could actually bite. The
       # formula must SAY its version, because Homebrew's fallback is to infer
@@ -282,6 +285,10 @@ jobs:
           brew test "${TAP}/navigator"
           brew install --formula "${TAP}/hudson"
           brew test "${TAP}/hudson"
+          if [[ "${RUNNER_OS}" == Linux ]]; then
+              brew install --formula "${TAP}/scorpio"
+              brew test "${TAP}/scorpio"
+          fi
           navigator --version
 
   unsupported:

@@ -12,13 +12,8 @@
 # mirrored onto this tap any more: `deploy.yml` attaches the archives to its own
 # Release and then dispatches the tag here.
 #
-# Three values move: the version and the sha256 of each of the two prebuilt
-# archives this tap installs (the macOS archive and the Linux archive). A
-# fourth may move — `version_scheme` — for the reason below.
-#
-# THERE IS NO THIRD ARTIFACT. Intel macOS and arm64 Linux have no prebuilt
-# archive, and `Formula/navigator.rb` `odie`s on those two platforms rather than
-# compiling from source; this script computes no digest for either.
+# Each formula carries digests for its published platforms. Navigator and
+# Hudson support Apple silicon macOS and x86_64 Linux. Scorpio supports x86_64 Linux.
 #
 # EVERY SHAPE NAVIGATOR PUBLISHES IS ACCEPTED: an ordinary `YY.M.D`, a same-day
 # `YY.M.D-hotfix.N`, and a `YY.M.D-rc.N` release candidate. Navigator publishes
@@ -98,31 +93,30 @@ digest() {
     shasum -a 256 "${workdir}/${name}" | cut -d' ' -f1
 }
 
-# Prepare and verify both formulas before replacing either one.
+# Prepare and verify all three formulas before replacing either one.
 bump_formula() {
     local name="$1"
     local formula="${FORMULA_DIR}/${name}.rb"
-    local sha_macos sha_linux old old_scheme scheme escaped escaped_tag schemes urls digests
-    local platform archive line expected
+    local platforms=("${@:2}")
+    local sha_macos="" sha_linux="" old old_scheme scheme escaped escaped_tag schemes urls digests
+    local platform archive url checksum line expected
+
     echo "==> digesting ${REPO} ${name} ${TAG}"
-    sha_macos="$(digest \
-        "https://github.com/${REPO}/releases/download/${TAG}/${name}-${TAG}-macos.tar.gz" \
-        macos.tar.gz)"
-    sha_linux="$(digest \
-        "https://github.com/${REPO}/releases/download/${TAG}/${name}-${TAG}-linux.tar.gz" \
-        linux.tar.gz)"
-    if [[ "${name}" == hudson ]]; then
-        for platform in macos linux; do
-            archive="hudson-${TAG}-${platform}.tar.gz"
+    for platform in "${platforms[@]}"; do
+        archive="${name}-${TAG}-${platform}.tar.gz"
+        url="https://github.com/${REPO}/releases/download/${TAG}/${archive}"
+        checksum="$(digest "${url}" "${archive}")"
+        if [[ "${name}" != navigator ]]; then
             curl --fail --silent --show-error --location \
-                --output "${workdir}/${archive}.sha256" \
-                "https://github.com/${REPO}/releases/download/${TAG}/${archive}.sha256"
-            mv "${workdir}/${platform}.tar.gz" "${workdir}/${archive}"
+                --output "${workdir}/${archive}.sha256" "${url}.sha256"
             (cd "${workdir}" && shasum -a 256 -c "${archive}.sha256")
-        done
-    fi
-    echo "    macos  ${sha_macos}"
-    echo "    linux  ${sha_linux}"
+        fi
+        case "${platform}" in
+            macos) sha_macos="${checksum}" ;;
+            linux) sha_linux="${checksum}" ;;
+        esac
+        echo "    ${platform}  ${checksum}"
+    done
 
     # The version currently in the formula, read from the file rather than passed
     # in, so a re-run against an already-bumped formula is a no-op instead of a
@@ -260,11 +254,8 @@ bump_formula() {
 
     urls="$(grep -c '^[[:space:]]*url "' "${workdir}/${name}.rb")"
     digests="$(grep -c '^[[:space:]]*sha256 "' "${workdir}/${name}.rb")"
-    # Two, not four — there is no source-tarball fallback for Intel macOS and
-    # arm64 Linux (see the header comment), so there is one url/sha256 pair
-    # per prebuilt archive and no third artifact to digest twice.
-    [[ "${urls}" -eq 2 ]] || fail "expected 2 \`url\` lines, found ${urls}"
-    [[ "${digests}" -eq 2 ]] || fail "expected 2 \`sha256\` lines, found ${digests}"
+    [[ "${urls}" -eq "${#platforms[@]}" ]] || fail "${name}: unexpected URL count ${urls}"
+    [[ "${digests}" -eq "${#platforms[@]}" ]] || fail "${name}: unexpected digest count ${digests}"
 
     while read -r line; do
         printf '%s' "${line}" | grep -q "${TAG}" ||
@@ -289,14 +280,16 @@ bump_formula() {
     fi
 
     for expected in "${sha_macos}" "${sha_linux}"; do
+        [[ -n "${expected}" ]] || continue
         grep -q "sha256 \"${expected}\"" "${workdir}/${name}.rb" ||
             fail "the computed digest ${expected} did not reach the formula"
     done
 }
 
-bump_formula navigator
-bump_formula hudson
-for name in navigator hudson; do
+bump_formula navigator macos linux
+bump_formula hudson macos linux
+bump_formula scorpio linux
+for name in navigator hudson scorpio; do
     cp "${workdir}/${name}.rb" "${FORMULA_DIR}/${name}.rb"
 done
-echo "==> navigator and hudson now point at ${TAG}"
+echo "==> navigator, hudson, and scorpio now point at ${TAG}"
