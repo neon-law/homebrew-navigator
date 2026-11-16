@@ -12,6 +12,15 @@ That one line taps this repository and installs `navigator`. Upgrades come with 
 formula is bumped automatically minutes after each Navigator release, so a `brew update && brew upgrade` is always
 enough.
 
+Install the Hudson operator CLI from the same tap:
+
+```bash
+brew install neon-law/navigator/hudson
+```
+
+Use the fully qualified name to select this formula. The release workflow updates both formulas in one commit.
+Upgrade Hudson with `brew upgrade neon-law/navigator/hudson`.
+
 ## What you get
 
 | Platform | How it installs |
@@ -38,8 +47,7 @@ stands in until it lands.
    archives, attaching them to its own GitHub Release.
 3. Its `release-homebrew-tap` job then fires a `repository_dispatch` at this repository carrying the tag only.
 4. [`.github/workflows/bump.yml`](.github/workflows/bump.yml) downloads each artifact **from the `neon-law/navigator`
-   Release**, computes its sha256, rewrites [`Formula/navigator.rb`](Formula/navigator.rb), installs and tests the
-   result on the runner, and pushes.
+   Release**, computes its sha256, verifies the published Hudson checksums, updates both formulas, installs and tests them on the runner, and pushes them together.
 
 **The digests are computed here, from the published bytes.** The dispatch carries a tag and nothing else. A payload
 carrying digests would let a malformed dispatch pin the formula to bytes nobody verified, and it would mean this

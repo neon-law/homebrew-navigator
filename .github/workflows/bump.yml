@@ -100,13 +100,13 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "bumping to ${tag}"
 
-      - name: rewrite the formula
+      - name: rewrite both formulas
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: scripts/bump.sh "${TAG}"
 
       - name: show the change
-        run: git --no-pager diff -- Formula/navigator.rb
+        run: git --no-pager diff -- Formula/navigator.rb Formula/hudson.rb
 
       # Install the rewritten formula BEFORE committing it. This runner is
       # x86_64 Linux, which is one of the two prebuilt paths, so the check costs
@@ -176,12 +176,14 @@ jobs:
       # bump passes here and `main` is red the moment anyone opens a pull
       # request against it — which is the failure this step exists to prevent,
       # reintroduced one level up.
-      - name: audit, install, and test the formula on this runner
+      - name: audit, install, and test both formulas on this runner
         run: |
           set -euo pipefail
-          brew audit --online --except=version --formula "${TAP}/navigator"
-          brew install --formula "${TAP}/navigator"
-          brew test "${TAP}/navigator"
+          for formula in navigator hudson; do
+              brew audit --online --except=version --formula "${TAP}/${formula}"
+              brew install --formula "${TAP}/${formula}"
+              brew test "${TAP}/${formula}"
+          done
 
       # THIS PUSHES STRAIGHT TO `main`, and `main` is deliberately unprotected.
       # A tap holds one mechanical file whose every change is a formula bump
@@ -221,13 +223,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- Formula/navigator.rb; then
-              echo "formula already points at ${TAG} — nothing to commit"
+          if git diff --quiet -- Formula/navigator.rb Formula/hudson.rb; then
+              echo "both formulas already point at ${TAG} — nothing to commit"
               exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/navigator.rb
+          git add Formula/navigator.rb Formula/hudson.rb
           git commit --message "navigator ${TAG}"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
-          echo "formula pushed at ${TAG}"
+          echo "both formulas pushed at ${TAG}"
