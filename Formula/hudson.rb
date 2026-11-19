@@ -3,14 +3,14 @@ class Hudson < Formula
   # The product page; `webapp::source_repository::NAVIGATOR_HREF` is the same
   # URL the public footer links.
   homepage "https://www.neonlaw.com/navigator"
-  version "26.11.17-rc.1"
+  version "26.11.19-rc.1"
   # The installed CLI offers either license; the tap has its own terms.
   license any_of: ["MIT", "Apache-2.0"]
 
   on_macos do
     on_arm do
-      url "https://github.com/neon-law/navigator/releases/download/26.11.17-rc.1/hudson-26.11.17-rc.1-macos.tar.gz"
-      sha256 "fbc203b9eaef2bc0d85a2e97b381ee61fed780faaf5e6e8c1cb5820e6b45b6b2"
+      url "https://github.com/neon-law/navigator/releases/download/26.11.19-rc.1/hudson-26.11.19-rc.1-macos.tar.gz"
+      sha256 "7e5355fa883bc90227f9cf384241a2817645a17edc7e3d56aeb77b42879607c4"
     end
 
     on_intel do
@@ -26,8 +26,8 @@ class Hudson < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/neon-law/navigator/releases/download/26.11.17-rc.1/hudson-26.11.17-rc.1-linux.tar.gz"
-      sha256 "847f3d485ffe017e544a3b940dfa346e02c053221398a2b97100f74cbf0c18d1"
+      url "https://github.com/neon-law/navigator/releases/download/26.11.19-rc.1/hudson-26.11.19-rc.1-linux.tar.gz"
+      sha256 "d7fa6fc72096cdad60bc6e752ded356b6fe4a59aeebea89b1393c9483dd142ba"
     end
 
     on_arm do
