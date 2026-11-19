@@ -1,9 +1,9 @@
 class Scorpio < Formula
   desc "Neon Law Navigator Ephemeris CLI"
   homepage "https://www.neonlaw.com/navigator"
-  url "https://github.com/neon-law/navigator/releases/download/26.11.19-rc.1/scorpio-26.11.19-rc.1-linux.tar.gz"
-  version "26.11.19-rc.1"
-  sha256 "2316f18263c2756ac62d3793f36c15329466ddf6f7ad82312d5a96bc20bb0f35"
+  url "https://github.com/neon-law/navigator/releases/download/26.11.19/scorpio-26.11.19-linux.tar.gz"
+  version "26.11.19"
+  sha256 "fbf65c81f67d0cadd4061835372731597d4251e958afc576d38abaff41314667"
   license any_of: ["MIT", "Apache-2.0"]
 
   depends_on arch: :x86_64
